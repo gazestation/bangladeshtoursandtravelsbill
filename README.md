@@ -44,6 +44,19 @@ Never expose a Supabase service-role key in a `NEXT_PUBLIC_*` variable or browse
 
 Active staff can read accounts and create bills/payments. Only admin/accountant roles can post ledger adjustments; role-based restrictions beyond this are not yet implemented.
 
+## How the accounts are calculated
+
+All values are calculated in the database from signed ledger entries—never by manually overwriting a customer balance.
+
+- **Net balance** = opening due + travel bills + positive charge adjustments − recorded payments − opening advance − credit adjustments.
+- **Due balance** = the greater of net balance or zero.
+- **Customer advance** = the greater of negative net balance or zero.
+- **Invoice outstanding** = invoice amount − allocations posted to that invoice, never below zero.
+- **Payment allocation** runs FIFO over the oldest outstanding bill by bill date, then creation timestamp, then ID. Any payment remainder not used by open bills stays as advance and is auto-applied to later bills.
+- **Opening due and opening advance** are separate entries. If both are supplied at customer creation, the advance is allocated against the opening-due bill first, up to the due amount.
+- **Retry safety** uses a unique operation key plus a payload fingerprint. Concurrent retries are serialized; repeating identical details returns the original record, while reusing a key with different details is rejected.
+- **Correction safety**: a positive adjustment creates a distinct charge bill so later payments can settle it. A negative adjustment creates a ledger credit and allocates it FIFO. Bills and payments themselves cannot yet be reversed from the UI; do not delete/edit their financial rows manually.
+
 ## Accounting rules
 
 - Positive ledger entries mean the customer owes the business; negative entries mean payments/advances.
@@ -51,7 +64,7 @@ Active staff can read accounts and create bills/payments. Only admin/accountant 
 - Bill/payment records and ledger entries are created together in a database transaction.
 - Payments apply FIFO to outstanding invoices. Amounts beyond current due remain as advance credit.
 - Existing credits are applied FIFO when a new bill is created.
-- Financial rows are not directly editable from the browser. Corrections should use an audited adjustment/reversal workflow, not manual balance overwrites.
+- Financial rows are not directly editable from the browser. Use audited adjustments; bill/payment reversal actions are not yet implemented.
 - Every create RPC requires an operation key; a retry with identical arguments returns the original record, while reusing a key with different arguments is rejected.
 
 ## Release checklist
