@@ -2,8 +2,6 @@
 -- Apply to a verified, dedicated Supabase project/test branch first.
 -- Financial records are append-only from the client; bills/payments are created through locked, idempotent RPCs.
 
-create extension if not exists pgcrypto with schema extensions;
-
 create table if not exists public.staff_members (
   user_id uuid primary key references auth.users(id) on delete cascade,
   display_name text not null,
@@ -222,7 +220,7 @@ create or replace function public.create_customer(
 returns uuid
 language plpgsql
 security definer
-set search_path = pg_catalog, public, auth, extensions
+set search_path = pg_catalog, public, auth
 as $$
 declare
   v_customer_id uuid;
@@ -297,7 +295,7 @@ create or replace function public.create_bill(
 returns uuid
 language plpgsql
 security definer
-set search_path = pg_catalog, public, auth, extensions
+set search_path = pg_catalog, public, auth
 as $$
 declare
   v_bill_id uuid;
@@ -374,7 +372,7 @@ create or replace function public.create_payment(
 returns uuid
 language plpgsql
 security definer
-set search_path = pg_catalog, public, auth, extensions
+set search_path = pg_catalog, public, auth
 as $$
 declare
   v_payment_id uuid;
@@ -447,7 +445,7 @@ create or replace function public.record_adjustment(
 returns uuid
 language plpgsql
 security definer
-set search_path = pg_catalog, public, auth, extensions
+set search_path = pg_catalog, public, auth
 as $$
 declare
   v_entry_id uuid;
