@@ -42,7 +42,7 @@ Never expose a Supabase service-role key in a `NEXT_PUBLIC_*` variable or browse
 5. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in the local environment or Vercel **Preview** environment. Do not add a service-role key to the browser app.
 6. Verify active staff can read data and create records, while non-staff/anonymous users cannot. Complete the checklist in `supabase/tests/README.md` before using any real customer balances.
 
-All active staff currently share the same accounting read/write capability; role-based restrictions beyond active staff membership are not yet implemented.
+Active staff can read accounts and create bills/payments. Only admin/accountant roles can post ledger adjustments; role-based restrictions beyond this are not yet implemented.
 
 ## Accounting rules
 
