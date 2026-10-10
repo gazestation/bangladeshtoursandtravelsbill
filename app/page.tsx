@@ -242,29 +242,148 @@ export default function HomePage() {
     setNotice(null);
   }
 
-  function shareBillWhatsApp(bill: BillRow) {
-    if (!selectedCustomer) return;
+  async function generateInvoicePdf(bill: BillRow) {
+    if (!selectedCustomer) throw new Error("Select a customer before generating an invoice.");
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 18;
+    const contentWidth = pageWidth - margin * 2;
+    const safeNumber = bill.bill_number.replace(/[^a-zA-Z0-9-_]/g, "_");
+    const fileName = `BTNT-${safeNumber}.pdf`;
+    const money = (value: number) => formatBDT(value);
     const details = [
-      "Bangladesh Tours & Travels",
-      "Travel bill: " + bill.bill_number,
       "Customer: " + selectedCustomer.customer_name,
+      "Phone: " + (selectedCustomer.phone || "Not provided"),
+      "Address: " + (selectedCustomer.address || "Not provided"),
+      "Invoice: " + bill.bill_number,
       "Date: " + bill.bill_date,
-      "Details: " + bill.description,
-      "Invoice total: " + formatBDT(bill.amount),
-      "Paid / allocated: " + formatBDT(bill.allocated_amount),
-      "Outstanding: " + formatBDT(bill.outstanding_amount),
-      "",
-      "The PDF invoice can be attached to this message before sending."
+      "Description: " + bill.description,
+      "Invoice total: " + money(bill.amount),
+      "Paid / allocated: " + money(bill.allocated_amount),
+      "Outstanding: " + money(bill.outstanding_amount),
     ].join("\n");
-    const rawPhone = (selectedCustomer.phone ?? "").trim();
-    const phoneDigits = rawPhone.replace(/\D/g, "");
-    const isInternationalNumber = rawPhone.startsWith("+") && phoneDigits.length >= 8;
-    const recipient = isInternationalNumber ? phoneDigits : "";
-    const url = recipient
-      ? `https://wa.me/${recipient}?text=${encodeURIComponent(details)}`
-      : `https://wa.me/?text=${encodeURIComponent(details)}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-    setNotice({ type: "warning", message: "WhatsApp opened with the bill summary. To send the actual PDF too, choose Print / PDF → Save as PDF first, then attach that saved file in WhatsApp." });
+
+    doc.setFillColor(18, 107, 74);
+    doc.roundedRect(margin, 16, contentWidth, 32, 3, 3, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(17);
+    doc.text("BANGLADESH TOURS & TRAVELS", margin + 7, 29);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text("TRAVEL BILL  •  CUSTOMER COPY", margin + 7, 39);
+    doc.text("INVOICE", pageWidth - margin - 7, 29, { align: "right" });
+    doc.setFontSize(9);
+    doc.text(bill.bill_number, pageWidth - margin - 7, 39, { align: "right" });
+
+    let y = 61;
+    doc.setTextColor(33, 45, 38);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("BILL TO", margin, y);
+    doc.text("INVOICE DETAILS", pageWidth / 2 + 5, y);
+    y += 7;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(doc.splitTextToSize(selectedCustomer.customer_name, contentWidth / 2 - 8), margin, y);
+    doc.text(`Date: ${bill.bill_date}`, pageWidth / 2 + 5, y);
+    y += 5;
+    if (selectedCustomer.phone) {
+      doc.text(`Phone: ${selectedCustomer.phone}`, margin, y);
+      y += 5;
+    }
+    if (selectedCustomer.address) {
+      const addressLines = doc.splitTextToSize(selectedCustomer.address, contentWidth / 2 - 8);
+      doc.text(addressLines, margin, y);
+    }
+    y = Math.max(y + 13, 100);
+
+    doc.setDrawColor(216, 226, 219);
+    doc.setFillColor(242, 247, 243);
+    doc.rect(margin, y, contentWidth, 11, "FD");
+    doc.setTextColor(48, 67, 56);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text("PARTICULARS", margin + 4, y + 7);
+    doc.text("AMOUNT", pageWidth - margin - 4, y + 7, { align: "right" });
+    y += 11;
+
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(33, 45, 38);
+    const descriptionLines = doc.splitTextToSize(bill.description, contentWidth - 45);
+    const rowHeight = Math.max(14, descriptionLines.length * 5 + 7);
+    doc.rect(margin, y, contentWidth, rowHeight);
+    doc.text(descriptionLines, margin + 4, y + 7);
+    doc.setFont("helvetica", "bold");
+    doc.text(money(bill.amount), pageWidth - margin - 4, y + 7, { align: "right" });
+    y += rowHeight + 12;
+
+    const summaryX = pageWidth - margin - 75;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text("Invoice total", summaryX, y);
+    doc.text(money(bill.amount), pageWidth - margin - 4, y, { align: "right" });
+    y += 8;
+    doc.text("Paid / allocated", summaryX, y);
+    doc.text(money(bill.allocated_amount), pageWidth - margin - 4, y, { align: "right" });
+    y += 8;
+    doc.setDrawColor(18, 107, 74);
+    doc.line(summaryX, y - 4, pageWidth - margin, y - 4);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text(bill.outstanding_amount > 0 ? "OUTSTANDING" : "BALANCE", summaryX, y + 2);
+    doc.text(money(bill.outstanding_amount), pageWidth - margin - 4, y + 2, { align: "right" });
+    y += 30;
+
+    doc.setTextColor(95, 111, 101);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text("Thank you for travelling with Bangladesh Tours & Travels.", margin, y);
+    doc.text("Authorised signature: __________________________", margin, y + 24);
+    doc.text("Generated by BTNT Bill Book", pageWidth / 2, 283, { align: "center" });
+
+    return { doc, fileName, details };
+  }
+
+  async function downloadInvoicePdf(bill: BillRow) {
+    try {
+      const { doc, fileName } = await generateInvoicePdf(bill);
+      doc.save(fileName);
+      setNotice({ type: "success", message: "Invoice PDF generated and downloaded." });
+    } catch (error) {
+      setNotice({ type: "error", message: errorText(error) });
+    }
+  }
+
+  async function shareBillWhatsApp(bill: BillRow) {
+    try {
+      const { doc, fileName, details } = await generateInvoicePdf(bill);
+      const pdfBlob = doc.output("blob");
+      const pdfFile = new File([pdfBlob], fileName, { type: "application/pdf" });
+      if (typeof navigator.share === "function" && typeof navigator.canShare === "function" && navigator.canShare({ files: [pdfFile] })) {
+        await navigator.share({
+          title: `BTNT Invoice ${bill.bill_number}`,
+          text: "Bangladesh Tours & Travels — invoice attached.",
+          files: [pdfFile],
+        });
+        setNotice({ type: "success", message: "Invoice shared using your device's share sheet. Choose WhatsApp to send the PDF if it is available." });
+        return;
+      }
+
+      doc.save(fileName);
+      const rawPhone = (selectedCustomer?.phone ?? "").trim();
+      const phoneDigits = rawPhone.replace(/\D/g, "");
+      const recipient = rawPhone.startsWith("+") && phoneDigits.length >= 8 ? phoneDigits : "";
+      const url = recipient
+        ? `https://wa.me/${recipient}?text=${encodeURIComponent(details)}`
+        : `https://wa.me/?text=${encodeURIComponent(details)}`;
+      window.open(url, "_blank", "noopener,noreferrer");
+      setNotice({ type: "warning", message: "PDF downloaded and WhatsApp opened with the bill summary. Attach the downloaded PDF in WhatsApp before sending." });
+    } catch (error) {
+      if (error && typeof error === "object" && "name" in error && error.name === "AbortError") return;
+      setNotice({ type: "error", message: errorText(error) });
+    }
   }
 
   async function handleAddCustomer(event: FormEvent<HTMLFormElement>) {
@@ -572,7 +691,7 @@ export default function HomePage() {
                       <td className="numeric">{formatBDT(bill.amount)}</td>
                       <td className="numeric"><strong>{formatBDT(bill.outstanding_amount)}</strong><div className="small-muted">Paid {formatBDT(bill.allocated_amount)}</div></td>
                       <td><div className="row-actions">
-                        <button className="btn ghost small" type="button" onClick={() => printInvoice(bill)}>Print / PDF</button>
+                        <button className="btn ghost small" type="button" onClick={() => downloadInvoicePdf(bill)}>Download PDF</button>
                         <button className="btn secondary small" type="button" onClick={() => shareBillWhatsApp(bill)}>WhatsApp</button>
                       </div></td>
                     </tr>)}
