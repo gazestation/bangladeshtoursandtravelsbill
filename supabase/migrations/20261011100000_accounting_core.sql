@@ -460,6 +460,8 @@ declare
   v_remaining numeric(12,2);
   v_take numeric(12,2);
   v_fingerprint text;
+  v_adjustment_bill_id uuid;
+  v_adjustment_bill_number text;
 begin
   if not public.is_active_staff() then raise exception 'Active staff access required.' using errcode = '42501'; end if;
   if not exists (
@@ -475,17 +477,32 @@ begin
   if not found then raise exception 'Customer not found.'; end if;
 
   v_fingerprint := concat_ws(chr(31), p_customer_id::text, round(p_amount_signed, 2)::text, trim(p_reason));
-  select id, customer_id, amount_signed, notes into v_old from public.ledger_entries
-    where operation_key = p_operation_key and entry_type = 'adjustment';
+  select id, customer_id, amount_signed, notes, entry_type into v_old from public.ledger_entries
+    where operation_key = p_operation_key;
   if found then
     if concat_ws(chr(31), v_old.customer_id::text, round(v_old.amount_signed, 2)::text, coalesce(v_old.notes, '')) <> v_fingerprint
       then raise exception 'Idempotency key was already used with different adjustment details.'; end if;
     return v_old.id;
   end if;
 
-  insert into public.ledger_entries(customer_id, entry_type, amount_signed, notes, operation_key, created_by)
-  values (p_customer_id, 'adjustment', round(p_amount_signed, 2), trim(p_reason), p_operation_key, auth.uid())
-  returning id into v_entry_id;
+  if p_amount_signed > 0 then
+    -- A positive adjustment is a charge. Give it its own bill so later payments can settle it FIFO.
+    v_adjustment_bill_number := 'ADJ-' || upper(replace(gen_random_uuid()::text, '-', ''));
+    insert into public.bills(customer_id, bill_number, bill_date, description, amount, is_opening_balance,
+      operation_key, request_fingerprint, created_by)
+    values (p_customer_id, v_adjustment_bill_number, current_date, 'Adjustment: ' || trim(p_reason),
+      round(p_amount_signed, 2), false, p_operation_key || ':bill', v_fingerprint, auth.uid())
+    returning id into v_adjustment_bill_id;
+
+    insert into public.ledger_entries(customer_id, entry_type, entry_date, amount_signed, bill_id, notes, operation_key, created_by)
+    values (p_customer_id, 'bill', current_date, round(p_amount_signed, 2), v_adjustment_bill_id,
+      trim(p_reason), p_operation_key, auth.uid())
+    returning id into v_entry_id;
+  else
+    insert into public.ledger_entries(customer_id, entry_type, amount_signed, notes, operation_key, created_by)
+    values (p_customer_id, 'adjustment', round(p_amount_signed, 2), trim(p_reason), p_operation_key, auth.uid())
+    returning id into v_entry_id;
+  end if;
 
   if p_amount_signed < 0 then
     v_remaining := -round(p_amount_signed, 2);
