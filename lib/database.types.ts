@@ -50,7 +50,7 @@ export type Database = {
         Relationships: [];
       };
       customer_ledger_statement: {
-        Row: { id: string; customer_id: string; customer_name: string; entry_type: "opening_due" | "opening_advance" | "bill" | "payment" | "adjustment"; amount_signed: number; notes: string | null; bill_id: string | null; payment_id: string | null; created_at: string; balance_after: number };
+        Row: { id: string; customer_id: string; customer_name: string; entry_type: "opening_due" | "opening_advance" | "bill" | "payment" | "adjustment"; entry_date: string; amount_signed: number; notes: string | null; bill_id: string | null; payment_id: string | null; created_at: string; balance_after: number };
         Relationships: [];
       };
     };
