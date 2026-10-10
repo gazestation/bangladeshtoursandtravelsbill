@@ -211,6 +211,8 @@ export default function HomePage() {
   useEffect(() => {
     if (!staff || !selectedId) return;
     let mounted = true;
+    // This is a data-fetching effect; the callback updates state only after its async database queries finish.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     reloadCustomerDetails(selectedId).catch((error) => {
       if (mounted) setNotice({ type: "error", message: errorText(error) });
     });
