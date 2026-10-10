@@ -135,7 +135,7 @@ export default function HomePage() {
       if (!mounted) return;
       setSession(nextSession);
       setStaff(null);
-      setAccessChecked(Boolean(nextSession));
+      setAccessChecked(!nextSession);
       if (!nextSession) {
         setCustomers([]);
         setBills([]);
