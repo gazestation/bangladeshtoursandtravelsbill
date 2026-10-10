@@ -40,6 +40,7 @@ type PaymentRow = {
 type LedgerRow = {
   id: string;
   entry_type: string;
+  entry_date: string;
   amount_signed: number;
   notes: string | null;
   balance_after: number;
@@ -166,7 +167,7 @@ export default function HomePage() {
     const [billResult, paymentResult, ledgerResult] = await Promise.all([
       client.from("bill_balance_summary").select("*").eq("customer_id", customerId).order("bill_date", { ascending: false }).order("created_at", { ascending: false }),
       client.from("payments").select("id, amount, payment_date, method, reference, created_at").eq("customer_id", customerId).order("payment_date", { ascending: false }).order("created_at", { ascending: false }).limit(25),
-      client.from("customer_ledger_statement").select("id, entry_type, amount_signed, notes, balance_after, created_at").eq("customer_id", customerId).order("created_at", { ascending: false }).limit(100),
+      client.from("customer_ledger_statement").select("id, entry_type, entry_date, amount_signed, notes, balance_after, created_at").eq("customer_id", customerId).order("entry_date", { ascending: false }).order("created_at", { ascending: false }).limit(100),
     ]);
     if (billResult.error) throw billResult.error;
     if (paymentResult.error) throw paymentResult.error;
@@ -586,7 +587,7 @@ export default function HomePage() {
                 {ledgerEntries.length === 0 ? <div className="empty-state">Ledger entries will appear here when an opening balance, bill, payment, or adjustment is recorded.</div> : (
                   <div className="table-wrap"><table><thead><tr><th>Date</th><th>Entry / details</th><th className="numeric">Due (+)</th><th className="numeric">Credit (−)</th><th className="numeric">Running balance</th></tr></thead><tbody>
                     {ledgerEntries.map((entry) => <tr key={entry.id}>
-                      <td>{new Date(entry.created_at).toLocaleDateString("en-IN")}</td>
+                      <td>{new Date(entry.entry_date + "T12:00:00").toLocaleDateString("en-IN")}</td>
                       <td><strong>{({ opening_due: "Opening due", opening_advance: "Opening advance", bill: "Bill", payment: "Payment", adjustment: "Adjustment" } as Record<string, string>)[entry.entry_type] ?? entry.entry_type}</strong><div className="small-muted">{entry.notes || "—"}</div></td>
                       <td className="numeric">{entry.amount_signed > 0 ? formatBDT(entry.amount_signed) : "—"}</td>
                       <td className="numeric">{entry.amount_signed < 0 ? formatBDT(Math.abs(entry.amount_signed)) : "—"}</td>
