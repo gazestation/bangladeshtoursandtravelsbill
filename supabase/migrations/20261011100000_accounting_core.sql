@@ -53,6 +53,7 @@ create table if not exists public.ledger_entries (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid not null references public.customers(id) on delete restrict,
   entry_type text not null check (entry_type in ('opening_due', 'opening_advance', 'bill', 'payment', 'adjustment')),
+  entry_date date not null default current_date,
   amount_signed numeric(12,2) not null check (amount_signed <> 0),
   bill_id uuid references public.bills(id) on delete restrict,
   payment_id uuid references public.payments(id) on delete restrict,
@@ -197,13 +198,14 @@ select
   le.customer_id,
   c.name as customer_name,
   le.entry_type,
+  le.entry_date,
   le.amount_signed,
   le.notes,
   le.bill_id,
   le.payment_id,
   le.created_at,
   sum(le.amount_signed) over (
-    partition by le.customer_id order by le.created_at, le.id
+    partition by le.customer_id order by le.entry_date, le.created_at, le.id
     rows between unbounded preceding and current row
   )::numeric(12,2) as balance_after
 from public.ledger_entries le
@@ -333,8 +335,8 @@ begin
     p_operation_key, v_fingerprint, auth.uid())
   returning id into v_bill_id;
 
-  insert into public.ledger_entries(customer_id, entry_type, amount_signed, bill_id, notes, operation_key, created_by)
-  values (p_customer_id, 'bill', round(p_amount, 2), v_bill_id, trim(p_description), p_operation_key || ':ledger', auth.uid())
+  insert into public.ledger_entries(customer_id, entry_type, entry_date, amount_signed, bill_id, notes, operation_key, created_by)
+  values (p_customer_id, 'bill', p_bill_date, round(p_amount, 2), v_bill_id, trim(p_description), p_operation_key || ':ledger', auth.uid())
   returning id into v_ledger_id;
 
   -- Apply any unused historic credits/advances to this new invoice, oldest credit first.
@@ -409,8 +411,8 @@ begin
     p_operation_key, v_fingerprint, auth.uid())
   returning id into v_payment_id;
 
-  insert into public.ledger_entries(customer_id, entry_type, amount_signed, payment_id, notes, operation_key, created_by)
-  values (p_customer_id, 'payment', -round(p_amount, 2), v_payment_id,
+  insert into public.ledger_entries(customer_id, entry_type, entry_date, amount_signed, payment_id, notes, operation_key, created_by)
+  values (p_customer_id, 'payment', p_payment_date, -round(p_amount, 2), v_payment_id,
     'Payment via ' || replace(p_method, '_', ' '), p_operation_key || ':ledger', auth.uid())
   returning id into v_credit_id;
 
