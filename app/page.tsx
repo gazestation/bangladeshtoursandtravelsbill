@@ -106,6 +106,8 @@ export default function HomePage() {
   const [paymentDate, setPaymentDate] = useState(localDate());
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [paymentReference, setPaymentReference] = useState("");
+  const [adjustmentAmount, setAdjustmentAmount] = useState("");
+  const [adjustmentReason, setAdjustmentReason] = useState("");
 
   const selectedCustomer = customers.find((customer) => customer.customer_id === selectedId) ?? null;
   const filteredCustomers = useMemo(() => {
@@ -371,6 +373,35 @@ export default function HomePage() {
     }
   }
 
+  async function handleCreateAdjustment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!client || !selectedCustomer) return;
+    setFormBusy(true);
+    setNotice(null);
+    try {
+      const signedAmount = Number(adjustmentAmount);
+      if (!Number.isFinite(signedAmount) || signedAmount === 0) throw new Error("Adjustment must be a non-zero amount. Use a positive value to increase due or a negative value to credit the customer.");
+      const fingerprint = JSON.stringify([selectedCustomer.customer_id, signedAmount, adjustmentReason.trim()]);
+      const { error } = await client.rpc("record_adjustment", {
+        p_customer_id: selectedCustomer.customer_id,
+        p_amount_signed: signedAmount,
+        p_reason: adjustmentReason.trim(),
+        p_operation_key: submissionKey("adjustment", fingerprint),
+      });
+      if (error) throw error;
+      await reloadCustomers(selectedCustomer.customer_id);
+      await reloadCustomerDetails(selectedCustomer.customer_id);
+      clearSubmissionKey("adjustment", fingerprint);
+      setAdjustmentAmount("");
+      setAdjustmentReason("");
+      setNotice({ type: "success", message: "Adjustment recorded as an audited ledger entry. Financial records were not overwritten." });
+    } catch (error) {
+      setNotice({ type: "error", message: errorText(error) });
+    } finally {
+      setFormBusy(false);
+    }
+  }
+
   function printInvoice(bill: BillRow) {
     setPrintBill(bill);
     window.setTimeout(() => window.print(), 100);
@@ -532,6 +563,19 @@ export default function HomePage() {
                       </div>
                       <button className="btn secondary full-width" type="submit" disabled={formBusy}>↓ Record payment</button>
                     </form>
+                    {(staff.role === "admin" || staff.role === "accountant") && (
+                      <>
+                        <div className="section-title">Ledger adjustment</div>
+                        <p className="small-muted" style={{ marginBottom: 12 }}>For approved corrections only. Positive amount increases due; negative amount records a customer credit. This creates an audit entry—it never edits an old bill or payment.</p>
+                        <form onSubmit={handleCreateAdjustment}>
+                          <div className="form-grid">
+                            <div className="field"><label htmlFor="adjustment-amount">Signed amount (৳) *</label><input id="adjustment-amount" type="number" step="0.01" required value={adjustmentAmount} onChange={(event) => setAdjustmentAmount(event.target.value)} placeholder="250 or -250" /></div>
+                            <div className="field"><label htmlFor="adjustment-reason">Reason / reference *</label><input id="adjustment-reason" required maxLength={500} value={adjustmentReason} onChange={(event) => setAdjustmentReason(event.target.value)} placeholder="Explain the correction" /></div>
+                          </div>
+                          <button className="btn ghost full-width" type="submit" disabled={formBusy}>Record audited adjustment</button>
+                        </form>
+                      </>
+                    )}
                   </>
                 )}
               </section>
