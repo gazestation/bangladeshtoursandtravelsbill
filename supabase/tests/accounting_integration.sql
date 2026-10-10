@@ -26,6 +26,7 @@ DECLARE
   v_b2_outstanding numeric(12,2);
   v_b3_outstanding numeric(12,2);
   v_adjustment_count integer;
+  v_count integer;
 BEGIN
   -- Opening due 10,000 minus opening advance 3,000 = due 7,000.
   v_customer := public.create_customer(
@@ -64,10 +65,10 @@ BEGIN
   FROM public.bill_balance_summary WHERE id = (
     SELECT id FROM public.bills WHERE customer_id = v_customer AND is_opening_balance = true
   );
-  SELECT outstanding_amount INTO v_b1 FROM public.bill_balance_summary WHERE id = v_b1;
-  SELECT outstanding_amount INTO v_b2 FROM public.bill_balance_summary WHERE id = v_b2;
-  IF v_opening_outstanding <> 0 OR v_b1 <> 5000 OR v_b2 <> 5000 THEN
-    RAISE EXCEPTION 'FIFO check failed: opening %, bill1 %, bill2 %', v_opening_outstanding, v_b1, v_b2;
+  SELECT outstanding_amount INTO v_b1_outstanding FROM public.bill_balance_summary WHERE id = v_b1;
+  SELECT outstanding_amount INTO v_b2_outstanding FROM public.bill_balance_summary WHERE id = v_b2;
+  IF v_opening_outstanding <> 0 OR v_b1_outstanding <> 5000 OR v_b2_outstanding <> 5000 THEN
+    RAISE EXCEPTION 'FIFO check failed: opening %, bill1 %, bill2 %', v_opening_outstanding, v_b1_outstanding, v_b2_outstanding;
   END IF;
 
   SELECT due_balance, advance_balance INTO v_due, v_advance
@@ -86,9 +87,9 @@ BEGIN
 
   -- Advance is auto-applied when a later bill is created.
   v_b3 := public.create_bill(v_customer, 'CI-BILL-003', DATE '2026-10-11', 'Later ticket', 3000, 'ci-bill-003');
-  SELECT outstanding_amount INTO v_b3 FROM public.bill_balance_summary WHERE id = v_b3;
-  IF v_b3 <> 1000 THEN
-    RAISE EXCEPTION 'Expected later bill outstanding 1000 after using advance, got %', v_b3;
+  SELECT outstanding_amount INTO v_b3_outstanding FROM public.bill_balance_summary WHERE id = v_b3;
+  IF v_b3_outstanding <> 1000 THEN
+    RAISE EXCEPTION 'Expected later bill outstanding 1000 after using advance, got %', v_b3_outstanding;
   END IF;
   SELECT due_balance, advance_balance INTO v_due, v_advance
   FROM public.customer_balance_summary WHERE customer_id = v_customer;
@@ -141,13 +142,10 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN
     NULL;
   END;
-  BEGIN
-    PERFORM count(*) FROM public.customer_balance_summary;
-    -- A denied SELECT would throw before this line.
-    RAISE EXCEPTION 'Non-staff read was not denied';
-  EXCEPTION WHEN insufficient_privilege THEN
-    NULL;
-  END;
+  SELECT count(*) INTO v_count FROM public.customer_balance_summary;
+  IF v_count <> 0 THEN
+    RAISE EXCEPTION 'Non-staff can read customer summary rows: %', v_count;
+  END IF;
 END
 $$;
 
