@@ -93,7 +93,7 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public, auth
+set search_path = pg_catalog, public, auth
 as $$
   select exists (
     select 1 from public.staff_members s
@@ -106,7 +106,7 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public, auth
+set search_path = pg_catalog, public, auth
 as $$
   select exists (
     select 1 from public.staff_members s
@@ -222,7 +222,7 @@ create or replace function public.create_customer(
 returns uuid
 language plpgsql
 security definer
-set search_path = public, auth, extensions
+set search_path = pg_catalog, public, auth, extensions
 as $$
 declare
   v_customer_id uuid;
@@ -297,7 +297,7 @@ create or replace function public.create_bill(
 returns uuid
 language plpgsql
 security definer
-set search_path = public, auth, extensions
+set search_path = pg_catalog, public, auth, extensions
 as $$
 declare
   v_bill_id uuid;
@@ -374,7 +374,7 @@ create or replace function public.create_payment(
 returns uuid
 language plpgsql
 security definer
-set search_path = public, auth, extensions
+set search_path = pg_catalog, public, auth, extensions
 as $$
 declare
   v_payment_id uuid;
@@ -447,7 +447,7 @@ create or replace function public.record_adjustment(
 returns uuid
 language plpgsql
 security definer
-set search_path = public, auth, extensions
+set search_path = pg_catalog, public, auth, extensions
 as $$
 declare
   v_entry_id uuid;
@@ -467,10 +467,10 @@ begin
   if not found then raise exception 'Customer not found.'; end if;
 
   v_fingerprint := concat_ws(chr(31), p_customer_id::text, round(p_amount_signed, 2)::text, trim(p_reason));
-  select id, amount_signed, notes into v_old from public.ledger_entries
+  select id, customer_id, amount_signed, notes into v_old from public.ledger_entries
     where operation_key = p_operation_key and entry_type = 'adjustment';
   if found then
-    if concat_ws(chr(31), p_customer_id::text, round(v_old.amount_signed, 2)::text, coalesce(v_old.notes, '')) <> v_fingerprint
+    if concat_ws(chr(31), v_old.customer_id::text, round(v_old.amount_signed, 2)::text, coalesce(v_old.notes, '')) <> v_fingerprint
       then raise exception 'Idempotency key was already used with different adjustment details.'; end if;
     return v_old.id;
   end if;
