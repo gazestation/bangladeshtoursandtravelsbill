@@ -237,6 +237,7 @@ begin
   end if;
   if p_opening_due > 9999999999.99 or p_opening_advance > 9999999999.99 then raise exception 'Opening balance is too large.'; end if;
   if nullif(trim(p_operation_key), '') is null then raise exception 'Operation key is required.'; end if;
+  perform pg_advisory_xact_lock(hashtextextended('create_customer:' || p_operation_key, 0));
 
   v_fingerprint := concat_ws(chr(31), trim(p_name), coalesce(trim(p_phone), ''), coalesce(trim(p_address), ''),
     to_char(p_opening_due, 'FM999999999999990.00'), to_char(p_opening_advance, 'FM999999999999990.00'));
@@ -313,6 +314,7 @@ begin
   end if;
   if p_amount is null or p_amount <= 0 or p_amount > 9999999999.99 then raise exception 'Bill amount must be positive and within the supported limit.'; end if;
   if nullif(trim(p_operation_key), '') is null then raise exception 'Operation key is required.'; end if;
+  perform pg_advisory_xact_lock(hashtextextended('create_bill:' || p_operation_key, 0));
 
   select id into v_customer_lock from public.customers where id = p_customer_id for update;
   if not found then raise exception 'Customer not found.'; end if;
@@ -389,6 +391,7 @@ begin
   if p_amount is null or p_amount <= 0 or p_amount > 9999999999.99 then raise exception 'Payment amount must be positive and within the supported limit.'; end if;
   if p_method not in ('cash', 'bank_transfer', 'mobile_banking', 'other') then raise exception 'Unsupported payment method.'; end if;
   if nullif(trim(p_operation_key), '') is null then raise exception 'Operation key is required.'; end if;
+  perform pg_advisory_xact_lock(hashtextextended('create_payment:' || p_operation_key, 0));
 
   select id into v_customer_lock from public.customers where id = p_customer_id for update;
   if not found then raise exception 'Customer not found.'; end if;
@@ -464,6 +467,7 @@ begin
   if p_customer_id is null or nullif(trim(p_reason), '') is null then raise exception 'Customer and adjustment reason are required.'; end if;
   if p_amount_signed is null or p_amount_signed = 0 or abs(p_amount_signed) > 9999999999.99 then raise exception 'Adjustment must be non-zero and within the supported limit.'; end if;
   if nullif(trim(p_operation_key), '') is null then raise exception 'Operation key is required.'; end if;
+  perform pg_advisory_xact_lock(hashtextextended('record_adjustment:' || p_operation_key, 0));
 
   select id into v_customer_lock from public.customers where id = p_customer_id for update;
   if not found then raise exception 'Customer not found.'; end if;
