@@ -294,6 +294,131 @@ export default function HomePage() {
       "Outstanding: " + money(bill.outstanding_amount),
     ].join("\n");
 
+    const hasIndicText = /[\\u0980-\\u09FF\\u0900-\\u097F]/.test(details);
+    if (hasIndicText) {
+      // jsPDF's built-in fonts do not cover Indic scripts. Render through browser fonts so
+      // Bengali/Devanagari shaping remains readable in the generated invoice PDF.
+      const html2canvas = (await import("html2canvas")).default;
+      const root = document.createElement("section");
+      Object.assign(root.style, {
+        position: "absolute",
+        left: "-10000px",
+        top: "0",
+        width: "794px",
+        padding: "42px",
+        boxSizing: "border-box",
+        background: "#ffffff",
+        color: "#17251f",
+        fontFamily: '"Noto Sans Bengali", "Noto Sans Devanagari", system-ui, sans-serif',
+        fontSize: "16px",
+        lineHeight: "1.5",
+      });
+      const makeText = (tag: string, value: string, styles: Partial<CSSStyleDeclaration> = {}) => {
+        const node = document.createElement(tag);
+        node.textContent = value;
+        Object.assign(node.style, styles);
+        return node;
+      };
+      const header = document.createElement("div");
+      Object.assign(header.style, { background: "#126b4a", color: "#ffffff", padding: "26px", borderRadius: "12px", display: "flex", justifyContent: "space-between", gap: "24px", alignItems: "center" });
+      const brand = document.createElement("div");
+      brand.appendChild(makeText("h1", "Bangladesh Tours & Travels", { fontSize: "27px", lineHeight: "1.25", margin: "0 0 8px", fontWeight: "700" }));
+      brand.appendChild(makeText("p", "TRAVEL BILL · CUSTOMER COPY", { fontSize: "13px", margin: "0", letterSpacing: "1px" }));
+      const invoice = document.createElement("div");
+      Object.assign(invoice.style, { textAlign: "right", minWidth: "145px" });
+      invoice.appendChild(makeText("div", "INVOICE", { fontSize: "12px", letterSpacing: "2px" }));
+      invoice.appendChild(makeText("div", bill.bill_number, { fontSize: "18px", fontWeight: "700", marginTop: "8px", overflowWrap: "anywhere" }));
+      header.append(brand, invoice);
+      root.appendChild(header);
+
+      const metadata = document.createElement("div");
+      Object.assign(metadata.style, { display: "flex", gap: "48px", padding: "30px 2px 26px", borderBottom: "1px solid #d8e2db" });
+      const billTo = document.createElement("div");
+      Object.assign(billTo.style, { flex: "1", minWidth: "0" });
+      billTo.appendChild(makeText("div", "BILL TO", { fontSize: "12px", fontWeight: "700", color: "#126b4a", letterSpacing: "1px", marginBottom: "9px" }));
+      billTo.appendChild(makeText("div", selectedCustomer.customer_name, { fontSize: "18px", fontWeight: "700", overflowWrap: "anywhere" }));
+      billTo.appendChild(makeText("div", selectedCustomer.phone || "Phone not provided", { marginTop: "5px", fontSize: "14px" }));
+      if (selectedCustomer.address) billTo.appendChild(makeText("div", selectedCustomer.address, { marginTop: "5px", fontSize: "14px", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }));
+      const invoiceMeta = document.createElement("div");
+      Object.assign(invoiceMeta.style, { flex: "1", minWidth: "0" });
+      invoiceMeta.appendChild(makeText("div", "INVOICE DETAILS", { fontSize: "12px", fontWeight: "700", color: "#126b4a", letterSpacing: "1px", marginBottom: "9px" }));
+      invoiceMeta.appendChild(makeText("div", "Invoice: " + bill.bill_number, { fontSize: "14px", overflowWrap: "anywhere" }));
+      invoiceMeta.appendChild(makeText("div", "Date: " + bill.bill_date, { marginTop: "5px", fontSize: "14px" }));
+      metadata.append(billTo, invoiceMeta);
+      root.appendChild(metadata);
+
+      const table = document.createElement("table");
+      Object.assign(table.style, { width: "100%", borderCollapse: "collapse", marginTop: "24px", fontSize: "14px" });
+      const thead = document.createElement("thead");
+      const headingRow = document.createElement("tr");
+      for (const [label, align] of [["PARTICULARS", "left"], ["BILL DATE", "left"], ["AMOUNT", "right"]] as const) {
+        headingRow.appendChild(makeText("th", label, { padding: "13px 12px", background: "#f0f6f1", color: "#304338", textAlign: align, fontSize: "12px", borderBottom: "1px solid #d8e2db" }));
+      }
+      thead.appendChild(headingRow);
+      table.appendChild(thead);
+      const tbody = document.createElement("tbody");
+      const row = document.createElement("tr");
+      row.appendChild(makeText("td", bill.description, { padding: "16px 12px", borderBottom: "1px solid #d8e2db", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }));
+      row.appendChild(makeText("td", bill.bill_date, { padding: "16px 12px", borderBottom: "1px solid #d8e2db", whiteSpace: "nowrap" }));
+      row.appendChild(makeText("td", money(bill.amount), { padding: "16px 12px", borderBottom: "1px solid #d8e2db", textAlign: "right", whiteSpace: "nowrap", fontWeight: "700" }));
+      tbody.appendChild(row);
+      table.appendChild(tbody);
+      root.appendChild(table);
+
+      const totalsBox = document.createElement("div");
+      Object.assign(totalsBox.style, { marginTop: "28px", marginLeft: "auto", width: "320px", maxWidth: "100%" });
+      const addTotal = (label: string, value: string, bold = false) => {
+        const line = document.createElement("div");
+        Object.assign(line.style, { display: "flex", justifyContent: "space-between", gap: "20px", padding: "8px 0", borderBottom: bold ? "2px solid #126b4a" : "1px solid #e8eee9", fontWeight: bold ? "700" : "400" });
+        line.append(makeText("span", label, { fontSize: bold ? "15px" : "14px" }), makeText("span", value, { fontSize: bold ? "15px" : "14px", whiteSpace: "nowrap" }));
+        totalsBox.appendChild(line);
+      };
+      addTotal("Invoice total", money(bill.amount));
+      addTotal("Paid / allocated", money(bill.allocated_amount));
+      addTotal(bill.outstanding_amount > 0 ? "Outstanding" : "Balance", money(bill.outstanding_amount), true);
+      root.appendChild(totalsBox);
+      root.appendChild(makeText("p", "Thank you for travelling with Bangladesh Tours & Travels.", { marginTop: "40px", fontSize: "13px", color: "#5f6f65" }));
+      root.appendChild(makeText("p", "Authorised signature: ______________________________", { marginTop: "35px", fontSize: "13px", color: "#5f6f65" }));
+      root.appendChild(makeText("p", "Generated by BTNT Bill Book", { marginTop: "20px", fontSize: "11px", textAlign: "center", color: "#718178" }));
+
+      document.body.appendChild(root);
+      let canvas: HTMLCanvasElement;
+      try {
+        await Promise.all([
+          document.fonts.load('400 16px "Noto Sans Bengali"'),
+          document.fonts.load('700 16px "Noto Sans Bengali"'),
+          document.fonts.load('400 16px "Noto Sans Devanagari"'),
+          document.fonts.load('700 16px "Noto Sans Devanagari"'),
+        ]);
+        await document.fonts.ready;
+        canvas = await html2canvas(root, { scale: 2, backgroundColor: "#ffffff", logging: false, scrollX: 0, scrollY: 0 });
+      } finally {
+        root.remove();
+      }
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const pageMargin = 10;
+      const printableWidth = pageWidth - pageMargin * 2;
+      const printableHeight = pageHeight - pageMargin * 2;
+      const mmPerPixel = printableWidth / canvas.width;
+      const maxSliceHeight = Math.floor(printableHeight / mmPerPixel);
+      let offset = 0;
+      let pageIndex = 0;
+      while (offset < canvas.height) {
+        if (pageIndex > 0) doc.addPage();
+        const sliceHeight = Math.min(maxSliceHeight, canvas.height - offset);
+        const slice = document.createElement("canvas");
+        slice.width = canvas.width;
+        slice.height = sliceHeight;
+        const context = slice.getContext("2d");
+        if (!context) throw new Error("Could not prepare the Unicode invoice canvas.");
+        context.drawImage(canvas, 0, offset, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+        doc.addImage(slice.toDataURL("image/png"), "PNG", pageMargin, pageMargin, printableWidth, sliceHeight * mmPerPixel, undefined, "FAST");
+        offset += sliceHeight;
+        pageIndex += 1;
+      }
+      return { doc, fileName, details };
+    }
+
     doc.setFillColor(18, 107, 74);
     doc.roundedRect(margin, 16, contentWidth, 32, 3, 3, "F");
     doc.setTextColor(255, 255, 255);
