@@ -79,7 +79,6 @@ export default function HomePage() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [formBusy, setFormBusy] = useState(false);
   const [search, setSearch] = useState("");
-  const [printBill, setPrintBill] = useState<BillRow | null>(null);
   const operationKeys = useRef<Record<string, string>>({});
 
   function submissionKey(scope: string, fingerprint: string): string {
@@ -503,10 +502,7 @@ export default function HomePage() {
     }
   }
 
-  function printInvoice(bill: BillRow) {
-    setPrintBill(bill);
-    window.setTimeout(() => window.print(), 100);
-  }
+
 
   if (!authReady || (session && !accessChecked)) {
     return <main className="loading-screen">Opening BTNT Bill Book…</main>;
@@ -723,23 +719,7 @@ export default function HomePage() {
         </main>
       </div>
 
-      {printBill && selectedCustomer && (
-        <div className="print-sheet">
-          <h1>Bangladesh Tours &amp; Travels</h1>
-          <div>TRAVEL BILL / CUSTOMER COPY</div>
-          <h2>{printBill.bill_number}</h2>
-          <div className="print-meta">
-            <div><strong>Bill to</strong><br />{selectedCustomer.customer_name}<br />{selectedCustomer.phone || ""}<br />{selectedCustomer.address || ""}</div>
-            <div><strong>Invoice date</strong><br />{printBill.bill_date}<br /><strong>Status</strong><br />{printBill.outstanding_amount <= 0 ? "Paid / settled" : "Balance outstanding"}</div>
-          </div>
-          <table><thead><tr><th>Particulars</th><th>Bill date</th><th style={{ textAlign: "right" }}>Amount</th></tr></thead><tbody><tr><td>{printBill.description}</td><td>{printBill.bill_date}</td><td style={{ textAlign: "right" }}>{formatBDT(printBill.amount)}</td></tr></tbody></table>
-          <div className="print-total">Invoice total: {formatBDT(printBill.amount)}</div>
-          <p>Paid / allocated: {formatBDT(printBill.allocated_amount)}</p>
-          <p>Outstanding: {formatBDT(printBill.outstanding_amount)}</p>
-          <p style={{ marginTop: 70 }}>Thank you for travelling with us.</p>
-          <p>Authorised signature: _________________________</p>
-        </div>
-      )}
+
     </>
   );
 }
