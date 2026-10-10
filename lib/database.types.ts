@@ -62,7 +62,7 @@ export type Database = {
       create_payment: { Args: { p_customer_id: string; p_amount: number; p_payment_date: string; p_method: string; p_reference: string | null; p_operation_key: string }; Returns: string };
       record_adjustment: { Args: { p_customer_id: string; p_amount_signed: number; p_reason: string; p_operation_key: string }; Returns: string };
     };
-    Enums: {};
-    CompositeTypes: {};
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
   };
 };
