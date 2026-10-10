@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { formatBDT } from "@/lib/accounting";
@@ -67,16 +67,15 @@ function methodLabel(method: string): string {
 export default function HomePage() {
   const client = getSupabaseClient();
   const [session, setSession] = useState<Session | null>(null);
-  const [authReady, setAuthReady] = useState(false);
+  const [authReady, setAuthReady] = useState(!client);
   const [staff, setStaff] = useState<StaffMember | null>(null);
-  const [accessChecked, setAccessChecked] = useState(false);
+  const [accessChecked, setAccessChecked] = useState(!client);
   const [customers, setCustomers] = useState<CustomerSummary[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [bills, setBills] = useState<BillRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [ledgerEntries, setLedgerEntries] = useState<LedgerRow[]>([]);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [dataBusy, setDataBusy] = useState(false);
   const [formBusy, setFormBusy] = useState(false);
   const [search, setSearch] = useState("");
   const [printBill, setPrintBill] = useState<BillRow | null>(null);
@@ -123,11 +122,7 @@ export default function HomePage() {
   }), { due: 0, advance: 0 }), [customers]);
 
   useEffect(() => {
-    if (!client) {
-      setAuthReady(true);
-      setAccessChecked(true);
-      return;
-    }
+    if (!client) return;
     let mounted = true;
     client.auth.getSession().then(({ data }) => {
       if (!mounted) return;
@@ -140,7 +135,13 @@ export default function HomePage() {
       if (!mounted) return;
       setSession(nextSession);
       setStaff(null);
-      setAccessChecked(false);
+      setAccessChecked(Boolean(nextSession));
+      if (!nextSession) {
+        setCustomers([]);
+        setBills([]);
+        setPayments([]);
+        setLedgerEntries([]);
+      }
     });
     return () => {
       mounted = false;
@@ -160,13 +161,8 @@ export default function HomePage() {
     else setSelectedId("");
   }
 
-  async function reloadCustomerDetails(customerId: string) {
-    if (!client || !customerId) {
-      setBills([]);
-      setPayments([]);
-      setLedgerEntries([]);
-      return;
-    }
+  const reloadCustomerDetails = useCallback(async (customerId: string) => {
+    if (!client || !customerId) return;
     const [billResult, paymentResult, ledgerResult] = await Promise.all([
       client.from("bill_balance_summary").select("*").eq("customer_id", customerId).order("bill_date", { ascending: false }).order("created_at", { ascending: false }),
       client.from("payments").select("id, amount, payment_date, method, reference, created_at").eq("customer_id", customerId).order("payment_date", { ascending: false }).order("created_at", { ascending: false }).limit(25),
@@ -178,20 +174,11 @@ export default function HomePage() {
     setBills((billResult.data ?? []) as BillRow[]);
     setPayments((paymentResult.data ?? []) as PaymentRow[]);
     setLedgerEntries((ledgerResult.data ?? []) as LedgerRow[]);
-  }
+  }, [client]);
 
   useEffect(() => {
-    if (!client || !session) {
-      setStaff(null);
-      setAccessChecked(true);
-      setCustomers([]);
-      setBills([]);
-      setPayments([]);
-      setLedgerEntries([]);
-      return;
-    }
+    if (!client || !session) return;
     let mounted = true;
-    setAccessChecked(false);
     (async () => {
       try {
         const { data, error } = await client.from("staff_members").select("display_name, role, active").eq("user_id", session.user.id).maybeSingle();
@@ -221,21 +208,13 @@ export default function HomePage() {
   }, [client, session]);
 
   useEffect(() => {
-    if (!staff || !selectedId) {
-      setBills([]);
-      setPayments([]);
-      setLedgerEntries([]);
-      return;
-    }
+    if (!staff || !selectedId) return;
     let mounted = true;
-    setDataBusy(true);
     reloadCustomerDetails(selectedId).catch((error) => {
       if (mounted) setNotice({ type: "error", message: errorText(error) });
-    }).finally(() => {
-      if (mounted) setDataBusy(false);
     });
     return () => { mounted = false; };
-  }, [staff, selectedId, client]);
+  }, [staff, selectedId, reloadCustomerDetails]);
 
   async function handleSignIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -517,7 +496,7 @@ export default function HomePage() {
                 <input className="search-input" aria-label="Search customers" placeholder="Search name, phone or address…" value={search} onChange={(event) => setSearch(event.target.value)} />
                 <div className="customer-list" style={{ marginTop: 13 }}>
                   {filteredCustomers.length === 0 ? <div className="empty-state">{customers.length === 0 ? "No customers yet. Add the first customer above." : "No customers matched that search."}</div> : filteredCustomers.map((customer) => (
-                    <button type="button" key={customer.customer_id} className={`customer-row ${selectedId === customer.customer_id ? "active" : ""}`} onClick={() => setSelectedId(customer.customer_id)}>
+                    <button type="button" key={customer.customer_id} className={`customer-row ${selectedId === customer.customer_id ? "active" : ""}`} onClick={() => { setSelectedId(customer.customer_id); setBills([]); setPayments([]); setLedgerEntries([]); }}>
                       <span><span className="customer-name">{customer.customer_name}</span><span className="customer-sub">{customer.phone || "No phone"} · {customer.bill_count} bills</span></span>
                       <span className="customer-money">{formatBDT(customer.due_balance > 0 ? customer.due_balance : customer.advance_balance)}<small>{customer.due_balance > 0 ? "DUE" : customer.advance_balance > 0 ? "ADVANCE" : "SETTLED"}</small></span>
                     </button>
@@ -582,14 +561,17 @@ export default function HomePage() {
 
               {selectedCustomer && <section className="panel">
                 <div className="panel-head"><div><h3>Bills &amp; outstanding balances</h3><p>Payments are allocated to the oldest open bill first.</p></div><span className="pill">{bills.length} rows</span></div>
-                {dataBusy ? <div className="empty-state">Refreshing account…</div> : bills.length === 0 ? <div className="empty-state">No bills recorded for this customer yet.</div> : (
+                {bills.length === 0 ? <div className="empty-state">No bills recorded for this customer yet.</div> : (
                   <div className="table-wrap"><table><thead><tr><th>Bill</th><th>Date / details</th><th className="numeric">Amount</th><th className="numeric">Due</th><th>Action</th></tr></thead><tbody>
                     {bills.map((bill) => <tr key={bill.id}>
                       <td><strong>{bill.bill_number}</strong>{bill.is_opening_balance && <div className="small-muted">Opening balance</div>}</td>
                       <td>{bill.bill_date}<div className="small-muted">{bill.description}</div></td>
                       <td className="numeric">{formatBDT(bill.amount)}</td>
                       <td className="numeric"><strong>{formatBDT(bill.outstanding_amount)}</strong><div className="small-muted">Paid {formatBDT(bill.allocated_amount)}</div></td>
-                      <td><button className="btn ghost small" type="button" onClick={() => printInvoice(bill)}>Print / PDF</button></td>
+                      <td><div className="row-actions">
+                        <button className="btn ghost small" type="button" onClick={() => printInvoice(bill)}>Print / PDF</button>
+                        <button className="btn secondary small" type="button" onClick={() => shareBillWhatsApp(bill)}>WhatsApp</button>
+                      </div></td>
                     </tr>)}
                   </tbody></table></div>
                 )}
