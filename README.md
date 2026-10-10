@@ -11,7 +11,7 @@ A clean-room accounting application for Bangladesh Tours & Travels, built with N
 - FIFO payment allocation against oldest open bills.
 - Carry-forward customer advances, automatically applied to later bills.
 - Idempotent, transactional database RPCs for customer, bill, payment, and adjustment creation.
-- Bill list with print-to-PDF layout.
+- Bill list with browser print-to-PDF layout and WhatsApp bill-summary sharing (attach the saved PDF manually when needed).
 - Responsive dashboard and CI checks for accounting math + production build.
 
 ## Local development
