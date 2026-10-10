@@ -498,6 +498,28 @@ begin
     values (p_customer_id, 'bill', current_date, round(p_amount_signed, 2), v_adjustment_bill_id,
       trim(p_reason), p_operation_key, auth.uid())
     returning id into v_entry_id;
+
+    -- Apply any advance balance to this new charge, matching create_bill behavior.
+    v_remaining := round(p_amount_signed, 2);
+    for v_credit in
+      select le.id,
+        (-le.amount_signed - coalesce(sum(ia.allocated_amount), 0))::numeric(12,2) as available
+      from public.ledger_entries le
+      left join public.invoice_allocations ia on ia.credit_entry_id = le.id
+      where le.customer_id = p_customer_id and le.amount_signed < 0
+        and le.entry_type in ('payment', 'opening_advance', 'adjustment')
+      group by le.id, le.amount_signed, le.created_at
+      having -le.amount_signed - coalesce(sum(ia.allocated_amount), 0) > 0
+      order by le.created_at, le.id
+    loop
+      exit when v_remaining <= 0;
+      v_take := least(v_remaining, v_credit.available);
+      if v_take > 0 then
+        insert into public.invoice_allocations(credit_entry_id, bill_id, allocated_amount)
+        values (v_credit.id, v_adjustment_bill_id, v_take);
+        v_remaining := v_remaining - v_take;
+      end if;
+    end loop;
   else
     insert into public.ledger_entries(customer_id, entry_type, amount_signed, notes, operation_key, created_by)
     values (p_customer_id, 'adjustment', round(p_amount_signed, 2), trim(p_reason), p_operation_key, auth.uid())
