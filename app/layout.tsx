@@ -1,4 +1,8 @@
 import type { Metadata } from "next";
+import "@fontsource/noto-sans-bengali/400.css";
+import "@fontsource/noto-sans-bengali/700.css";
+import "@fontsource/noto-sans-devanagari/400.css";
+import "@fontsource/noto-sans-devanagari/700.css";
 import type { ReactNode } from "react";
 import "./globals.css";
 
