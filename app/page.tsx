@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { formatBDT } from "@/lib/accounting";
@@ -80,6 +80,16 @@ export default function HomePage() {
   const [formBusy, setFormBusy] = useState(false);
   const [search, setSearch] = useState("");
   const [printBill, setPrintBill] = useState<BillRow | null>(null);
+  const operationKeys = useRef<Record<string, string>>({});
+
+  function submissionKey(scope: string, fingerprint: string): string {
+    const cacheKey = scope + ":" + fingerprint;
+    if (!operationKeys.current[cacheKey]) operationKeys.current[cacheKey] = operationKey();
+    return operationKeys.current[cacheKey];
+  }
+  function clearSubmissionKey(scope: string, fingerprint: string) {
+    delete operationKeys.current[scope + ":" + fingerprint];
+  }
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -282,17 +292,19 @@ export default function HomePage() {
       const due = Number(openingDue || "0");
       const advance = Number(openingAdvance || "0");
       if (!Number.isFinite(due) || !Number.isFinite(advance) || due < 0 || advance < 0) throw new Error("Opening due and advance must be zero or a positive amount.");
+      const fingerprint = JSON.stringify([customerName.trim(), customerPhone.trim(), customerAddress.trim(), due, advance]);
       const { data, error } = await client.rpc("create_customer", {
         p_name: customerName.trim(),
         p_phone: customerPhone.trim() || null,
         p_address: customerAddress.trim() || null,
         p_opening_due: due,
         p_opening_advance: advance,
-        p_operation_key: operationKey(),
+        p_operation_key: submissionKey("customer", fingerprint),
       });
       if (error) throw error;
       const id = String(data);
       await reloadCustomers(id);
+      clearSubmissionKey("customer", fingerprint);
       setCustomerName(""); setCustomerPhone(""); setCustomerAddress("");
       setOpeningDue("0"); setOpeningAdvance("0");
       setNotice({ type: "success", message: "Customer saved. Opening balances were recorded in the ledger." });
@@ -309,17 +321,19 @@ export default function HomePage() {
     setFormBusy(true);
     setNotice(null);
     try {
+      const fingerprint = JSON.stringify([selectedCustomer.customer_id, billNumber.trim().toUpperCase(), billDate, billDescription.trim(), Number(billAmount)]);
       const { data, error } = await client.rpc("create_bill", {
         p_customer_id: selectedCustomer.customer_id,
         p_bill_number: billNumber.trim(),
         p_bill_date: billDate,
         p_description: billDescription.trim(),
         p_amount: Number(billAmount),
-        p_operation_key: operationKey(),
+        p_operation_key: submissionKey("bill", fingerprint),
       });
       if (error) throw error;
       await reloadCustomers(selectedCustomer.customer_id);
       await reloadCustomerDetails(selectedCustomer.customer_id);
+      clearSubmissionKey("bill", fingerprint);
       setBillNumber(""); setBillDescription(""); setBillAmount("");
       setNotice({ type: "success", message: `Bill saved (${String(data).slice(0, 8)}). Any available advance was applied automatically.` });
     } catch (error) {
@@ -335,17 +349,19 @@ export default function HomePage() {
     setFormBusy(true);
     setNotice(null);
     try {
+      const fingerprint = JSON.stringify([selectedCustomer.customer_id, Number(paymentAmount), paymentDate, paymentMethod, paymentReference.trim()]);
       const { error } = await client.rpc("create_payment", {
         p_customer_id: selectedCustomer.customer_id,
         p_amount: Number(paymentAmount),
         p_payment_date: paymentDate,
         p_method: paymentMethod,
         p_reference: paymentReference.trim() || null,
-        p_operation_key: operationKey(),
+        p_operation_key: submissionKey("payment", fingerprint),
       });
       if (error) throw error;
       await reloadCustomers(selectedCustomer.customer_id);
       await reloadCustomerDetails(selectedCustomer.customer_id);
+      clearSubmissionKey("payment", fingerprint);
       setPaymentAmount(""); setPaymentReference("");
       setNotice({ type: "success", message: "Payment recorded and allocated FIFO to the oldest open bills. Any extra remains as customer advance." });
     } catch (error) {
