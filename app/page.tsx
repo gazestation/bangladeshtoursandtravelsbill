@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { formatBDT } from "@/lib/accounting";
 import { getSupabaseClient } from "@/lib/supabase";
@@ -36,6 +37,14 @@ type PaymentRow = {
   reference: string | null;
   created_at: string;
 };
+type LedgerRow = {
+  id: string;
+  entry_type: string;
+  amount_signed: number;
+  notes: string | null;
+  balance_after: number;
+  created_at: string;
+};
 type Notice = { type: "success" | "error" | "warning"; message: string };
 
 function localDate(): string {
@@ -65,6 +74,7 @@ export default function HomePage() {
   const [selectedId, setSelectedId] = useState("");
   const [bills, setBills] = useState<BillRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [ledgerEntries, setLedgerEntries] = useState<LedgerRow[]>([]);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [dataBusy, setDataBusy] = useState(false);
   const [formBusy, setFormBusy] = useState(false);
@@ -142,16 +152,20 @@ export default function HomePage() {
     if (!client || !customerId) {
       setBills([]);
       setPayments([]);
+      setLedgerEntries([]);
       return;
     }
-    const [billResult, paymentResult] = await Promise.all([
+    const [billResult, paymentResult, ledgerResult] = await Promise.all([
       client.from("bill_balance_summary").select("*").eq("customer_id", customerId).order("bill_date", { ascending: false }).order("created_at", { ascending: false }),
       client.from("payments").select("id, amount, payment_date, method, reference, created_at").eq("customer_id", customerId).order("payment_date", { ascending: false }).order("created_at", { ascending: false }).limit(25),
+      client.from("customer_ledger_statement").select("id, entry_type, amount_signed, notes, balance_after, created_at").eq("customer_id", customerId).order("created_at", { ascending: false }).limit(100),
     ]);
     if (billResult.error) throw billResult.error;
     if (paymentResult.error) throw paymentResult.error;
+    if (ledgerResult.error) throw ledgerResult.error;
     setBills((billResult.data ?? []) as BillRow[]);
     setPayments((paymentResult.data ?? []) as PaymentRow[]);
+    setLedgerEntries((ledgerResult.data ?? []) as LedgerRow[]);
   }
 
   useEffect(() => {
@@ -161,6 +175,7 @@ export default function HomePage() {
       setCustomers([]);
       setBills([]);
       setPayments([]);
+      setLedgerEntries([]);
       return;
     }
     let mounted = true;
@@ -496,6 +511,19 @@ export default function HomePage() {
                 {payments.length === 0 ? <div className="empty-state">No payments recorded yet.</div> : (
                   <div className="table-wrap"><table><thead><tr><th>Date</th><th>Method / reference</th><th className="numeric">Received</th></tr></thead><tbody>
                     {payments.map((payment) => <tr key={payment.id}><td>{payment.payment_date}</td><td><strong>{methodLabel(payment.method)}</strong><div className="small-muted">{payment.reference || "—"}</div></td><td className="numeric"><strong>{formatBDT(payment.amount)}</strong></td></tr>)}
+                  </tbody></table></div>
+                )}
+                <div className="section-title">Customer ledger statement</div>
+                <p className="small-muted" style={{ marginBottom: 12 }}>Positive entries increase due; negative entries are credits. Running balance is calculated chronologically.</p>
+                {ledgerEntries.length === 0 ? <div className="empty-state">Ledger entries will appear here when an opening balance, bill, payment, or adjustment is recorded.</div> : (
+                  <div className="table-wrap"><table><thead><tr><th>Date</th><th>Entry / details</th><th className="numeric">Due (+)</th><th className="numeric">Credit (−)</th><th className="numeric">Running balance</th></tr></thead><tbody>
+                    {ledgerEntries.map((entry) => <tr key={entry.id}>
+                      <td>{new Date(entry.created_at).toLocaleDateString("en-IN")}</td>
+                      <td><strong>{({ opening_due: "Opening due", opening_advance: "Opening advance", bill: "Bill", payment: "Payment", adjustment: "Adjustment" } as Record<string, string>)[entry.entry_type] ?? entry.entry_type}</strong><div className="small-muted">{entry.notes || "—"}</div></td>
+                      <td className="numeric">{entry.amount_signed > 0 ? formatBDT(entry.amount_signed) : "—"}</td>
+                      <td className="numeric">{entry.amount_signed < 0 ? formatBDT(Math.abs(entry.amount_signed)) : "—"}</td>
+                      <td className="numeric"><strong>{entry.balance_after < 0 ? `Adv. ${formatBDT(Math.abs(entry.balance_after))}` : formatBDT(entry.balance_after)}</strong></td>
+                    </tr>)}
                   </tbody></table></div>
                 )}
               </section>}
