@@ -457,6 +457,10 @@ declare
   v_fingerprint text;
 begin
   if not public.is_active_staff() then raise exception 'Active staff access required.' using errcode = '42501'; end if;
+  if not exists (
+    select 1 from public.staff_members s
+    where s.user_id = auth.uid() and s.active = true and s.role in ('admin', 'accountant')
+  ) then raise exception 'Administrator or accountant access required for adjustments.' using errcode = '42501'; end if;
   if p_customer_id is null or nullif(trim(p_reason), '') is null then raise exception 'Customer and adjustment reason are required.'; end if;
   if p_amount_signed is null or p_amount_signed = 0 or abs(p_amount_signed) > 9999999999.99 then raise exception 'Adjustment must be non-zero and within the supported limit.'; end if;
   if nullif(trim(p_operation_key), '') is null then raise exception 'Operation key is required.'; end if;
