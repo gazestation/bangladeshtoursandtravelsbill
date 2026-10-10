@@ -81,13 +81,44 @@ export default function HomePage() {
   const [search, setSearch] = useState("");
   const operationKeys = useRef<Record<string, string>>({});
 
+  function fingerprintToken(value: string): string {
+    let hash = 2166136261;
+    for (let i = 0; i < value.length; i += 1) {
+      hash ^= value.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  }
+
   function submissionKey(scope: string, fingerprint: string): string {
     const cacheKey = scope + ":" + fingerprint;
-    if (!operationKeys.current[cacheKey]) operationKeys.current[cacheKey] = operationKey();
-    return operationKeys.current[cacheKey];
+    if (operationKeys.current[cacheKey]) return operationKeys.current[cacheKey];
+
+    const storageKey = "btnt-operation-key:" + scope + ":" + fingerprintToken(fingerprint);
+    let savedKey: string | null = null;
+    try {
+      savedKey = window.sessionStorage.getItem(storageKey);
+    } catch {
+      // Storage may be disabled; the in-memory key still protects retries in this tab.
+    }
+    const key = savedKey || operationKey();
+    operationKeys.current[cacheKey] = key;
+    try {
+      if (!savedKey) window.sessionStorage.setItem(storageKey, key);
+    } catch {
+      // The API remains protected for this render by the in-memory key.
+    }
+    return key;
   }
+
   function clearSubmissionKey(scope: string, fingerprint: string) {
-    delete operationKeys.current[scope + ":" + fingerprint];
+    const cacheKey = scope + ":" + fingerprint;
+    delete operationKeys.current[cacheKey];
+    try {
+      window.sessionStorage.removeItem("btnt-operation-key:" + scope + ":" + fingerprintToken(fingerprint));
+    } catch {
+      // A completed request remains safe: the database rejects duplicate operation keys.
+    }
   }
 
   const [email, setEmail] = useState("");
