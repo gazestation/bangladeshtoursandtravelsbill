@@ -1,0 +1,50 @@
+name: Build and accounting tests
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build
+
+  database-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: btnt_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d btnt_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: btnt_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create isolated Supabase Auth shim
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/postgres_auth_shim.sql
+      - name: Apply accounting migration to ephemeral PostgreSQL
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261011100000_accounting_core.sql
+      - name: Run database accounting / FIFO / RLS integration scenarios
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/accounting_integration.sql
