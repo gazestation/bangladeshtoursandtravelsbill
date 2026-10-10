@@ -212,6 +212,7 @@ export default function HomePage() {
     if (!staff || !selectedId) {
       setBills([]);
       setPayments([]);
+      setLedgerEntries([]);
       return;
     }
     let mounted = true;
@@ -245,6 +246,31 @@ export default function HomePage() {
     setSession(null);
     setStaff(null);
     setNotice(null);
+  }
+
+  function shareBillWhatsApp(bill: BillRow) {
+    if (!selectedCustomer) return;
+    const details = [
+      "Bangladesh Tours & Travels",
+      "Travel bill: " + bill.bill_number,
+      "Customer: " + selectedCustomer.customer_name,
+      "Date: " + bill.bill_date,
+      "Details: " + bill.description,
+      "Invoice total: " + formatBDT(bill.amount),
+      "Paid / allocated: " + formatBDT(bill.allocated_amount),
+      "Outstanding: " + formatBDT(bill.outstanding_amount),
+      "",
+      "The PDF invoice can be attached to this message before sending."
+    ].join("\n");
+    const rawPhone = (selectedCustomer.phone ?? "").trim();
+    const phoneDigits = rawPhone.replace(/\D/g, "");
+    const isInternationalNumber = rawPhone.startsWith("+") && phoneDigits.length >= 8;
+    const recipient = isInternationalNumber ? phoneDigits : "";
+    const url = recipient
+      ? `https://wa.me/${recipient}?text=${encodeURIComponent(details)}`
+      : `https://wa.me/?text=${encodeURIComponent(details)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+    setNotice({ type: "warning", message: "WhatsApp opened with the bill summary. To send the actual PDF too, choose Print / PDF → Save as PDF first, then attach that saved file in WhatsApp." });
   }
 
   async function handleAddCustomer(event: FormEvent<HTMLFormElement>) {
